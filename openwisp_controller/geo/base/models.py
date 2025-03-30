@@ -10,6 +10,11 @@ from openwisp_users.mixins import OrgMixin, ValidateOrgMixin
 
 
 class BaseLocation(OrgMixin, AbstractLocation):
+    fuzzy = models.BooleanField(
+        default=False,
+        help_text='Based on last public ip reported, not precise',
+    )
+
     class Meta(AbstractLocation.Meta):
         abstract = True
 
