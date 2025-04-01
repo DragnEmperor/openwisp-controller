@@ -79,6 +79,7 @@ STATICFILES_FINDERS = [
 ]
 
 MIDDLEWARE = [
+    'openwisp2.ip_middleware.FakeIPMiddleware',  # for simulating change in last_ip
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

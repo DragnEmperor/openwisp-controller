@@ -386,7 +386,7 @@ class AbstractDevice(OrgMixin, BaseModel):
         if (not hasattr(self, 'whoisinfo') or self.last_ip != self._initial_last_ip) and ip_address(
             self.last_ip
         ).is_global:
-            tasks.fetch_whois_details(self.pk, self.last_ip)
+            tasks.fetch_whois_details.delay(self.pk, self.last_ip)
 
         self._initial_last_ip = self.last_ip
 

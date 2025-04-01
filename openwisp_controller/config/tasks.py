@@ -178,6 +178,7 @@ def fetch_whois_details(device_pk, ip):
         data = response.json()
         device = Device.objects.get(pk=device_pk)
         if data.get('success'):
+            # Format timezone and address using the data from the API
             timezone = ' '.join(
                 [
                     data.get('timezone', {}).get('id', '').replace('\\', ''),
@@ -194,7 +195,7 @@ def fetch_whois_details(device_pk, ip):
                     data.get('postal', ''),
                 ]
             )
-
+            # Create/update the WHOIS information for the device
             WHOISInfo.objects.update_or_create(
                 device_id=device_pk,
                 defaults={
@@ -222,12 +223,15 @@ def fetch_whois_details(device_pk, ip):
                 device_location = DeviceLocation.objects.filter(
                     content_object_id=device_pk
                 ).select_related('location').select_for_update().first()
+                # if device location exists, update the location with new coords
                 #TODO: do we change is_mobile and type of an existing location?
                 if device_location and device_location.location:
                     for attr, value in location_defaults.items():
                         setattr(device_location.location, attr, value)
                     device_location.location.full_clean()
                     device_location.location.save()
+                # if no existing location, create a new one
+                # and link it to the device
                 else:
                     location = Location(**location_defaults)
                     location.full_clean()
