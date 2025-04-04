@@ -34,10 +34,10 @@ class AbstractWHOISInfo(TimeStampedEditableModel):
         blank=True,
         help_text=_('Country Code'),
     )
-    isp = models.CharField(
+    asn = models.CharField(
         max_length=100,
         blank=True,
-        help_text=_('ISP name'),
+        help_text=_('Autonomous System Number'),
     )
     timezone = models.CharField(
         max_length=100,
@@ -48,6 +48,11 @@ class AbstractWHOISInfo(TimeStampedEditableModel):
         max_length=255,
         blank=True,
         help_text=_('Address'),
+    )
+    cidr = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text=_('CIDR'),
     )
 
     class Meta:

@@ -1,6 +1,6 @@
-import json
 import logging
 
+import geoip2.webservice
 import requests
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -173,85 +173,75 @@ def fetch_whois_details(device_pk, ip):
     DeviceLocation = load_model('geo', 'DeviceLocation')
     Device = load_model('config', 'Device')
     try:
-        response = requests.get(f'https://ipwho.is/{ip}')
-        response.raise_for_status()
-        data = response.json()
+        # 'geolite.info' is available for free
+        ip_client = geoip2.webservice.Client(
+            settings.GEOIP_ACCOUNT_ID, settings.GEOIP_LICENSE_KEY, 'geolite.info'
+        )
         device = Device.objects.get(pk=device_pk)
-        if data.get('success'):
-            # Format timezone and address using the data from the API
-            timezone = ' '.join(
-                [
-                    data.get('timezone', {}).get('id', '').replace('\\', ''),
-                    data.get('timezone', {}).get('abbr', ''),
-                    data.get('timezone', {}).get('utc', ''),
-                ]
-            )
-            address = ', '.join(
-                [
-                    data.get('city', ''),
-                    data.get('region', ''),
-                    data.get('country', ''),
-                    data.get('continent', ''),
-                    data.get('postal', ''),
-                ]
-            )
-            # Create/update the WHOIS information for the device
-            WHOISInfo.objects.update_or_create(
-                device_id=device_pk,
-                defaults={
-                    'organization_name': data.get('connection', {}).get('org', ''),
-                    'isp': data.get('connection', {}).get('isp', ''),
-                    'country': data.get('country', ''),
-                    'timezone': timezone,
-                    'address': address,
-                    'last_public_ip': ip,
-                },
-            )
-            if (latitude := data.get('latitude')) and (longitude := data.get('longitude')):
-                coords = Point(longitude, latitude, srid=4326)
-                # Create/update the device location mapping, updating existing location if exists else create a new location
-                location_defaults = {
-                    'name': f'{device.name} Location',
-                    'type': 'outdoor',
-                    'organization_id': device.organization_id,
-                    'is_mobile': False,
-                    'fuzzy': True,
-                    'geometry': coords,
-                    'address': address,
-                }
-                # Locking the device location for update
-                device_location = DeviceLocation.objects.filter(
-                    content_object_id=device_pk
-                ).select_related('location').select_for_update().first()
-                # if device location exists, update the location with new coords
-                #TODO: do we change is_mobile and type of an existing location?
-                if device_location and device_location.location:
-                    for attr, value in location_defaults.items():
-                        setattr(device_location.location, attr, value)
-                    device_location.location.full_clean()
-                    device_location.location.save()
-                # if no existing location, create a new one
-                # and link it to the device
-                else:
-                    location = Location(**location_defaults)
-                    location.full_clean()
-                    location.save()
-                    if not device_location:
-                        device_location = DeviceLocation(
-                            content_object_id=device_pk, location=location
-                        )
-                    else:
-                        device_location.location = location
-                    device_location.full_clean()
-                    device_location.save()
-
-            else:
-                logger.warning(f'No latitude or longitude found for {ip}.')
-            logger.info(f'Successfully fetched WHOIS details for {ip}.')
+        data = ip_client.city(ip)
+        # Format address using the data from the geoip2 response
+        address = ', '.join(
+            [
+                data.city.name,
+                data.country.name,
+                data.continent.name,
+                str(data.postal.code),
+            ]
+        )
+        # Create/update the WHOIS information for the device
+        WHOISInfo.objects.update_or_create(
+            device_id=device_pk,
+            defaults={
+                'organization_name': data.traits.autonomous_system_organization,
+                'asn': data.traits.autonomous_system_number,
+                'country': data.country.name,
+                'timezone': data.location.time_zone,
+                'address': address,
+                'cidr': data.traits.network,
+                'last_public_ip': ip,
+            },
+        )
+        coords = Point(data.location.longitude, data.location.latitude, srid=4326)
+        # Create/update the device location mapping, updating existing location if exists else create a new location
+        location_defaults = {
+            'name': f'{device.name} Location',
+            'type': 'outdoor',
+            'organization_id': device.organization_id,
+            'is_mobile': False,
+            'geometry': coords,
+            'address': address,
+        }
+        # Locking the device location for update
+        device_location = (
+            DeviceLocation.objects.filter(content_object_id=device_pk)
+            .select_related('location')
+            .select_for_update()
+            .first()
+        )
+        # if device location exists and is fuzzy, update the location with new coords
+        # TODO: do we change is_mobile and type of an existing location?
+        if device_location and device_location.location:
+            if device_location.location.fuzzy:
+                for attr, value in location_defaults.items():
+                    setattr(device_location.location, attr, value)
+                device_location.location.full_clean()
+                device_location.location.save()
+        # if no existing location, create a new one
+        # and link it to the device
         else:
-            logger.error(
-                f'WHOIS lookup failed for {ip}: {data.get("message", "Unknown error")}'
-            )
+            location = Location(**location_defaults, fuzzy=True)
+            location.full_clean()
+            location.save()
+            if not device_location:
+                device_location = DeviceLocation(
+                    content_object_id=device_pk, location=location
+                )
+            else:
+                device_location.location = location
+            device_location.full_clean()
+            device_location.save()
+
+        logger.info(f'Successfully fetched WHOIS details for {ip}.')
     except requests.RequestException as e:
         logger.error(f'Error fetching WHOIS details for {ip}: {e}')
     except ObjectDoesNotExist:

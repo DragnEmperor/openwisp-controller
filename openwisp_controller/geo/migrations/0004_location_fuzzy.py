@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
             model_name="location",
             name="fuzzy",
             field=models.BooleanField(
-                default=False, help_text="Use fuzzy matching for location coordinates."
+                default=False, help_text="Based on last public ip reported, not precise"
             ),
         ),
     ]

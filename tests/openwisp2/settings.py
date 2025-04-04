@@ -282,3 +282,6 @@ try:
     from .local_settings import *
 except ImportError:
     pass
+
+GEOIP_ACCOUNT_ID = os.getenv('GEOIP_ACCOUNT_ID', '')
+GEOIP_LICENSE_KEY = os.getenv('GEOIP_LICENSE_KEY', '')

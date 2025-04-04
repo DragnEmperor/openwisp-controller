@@ -72,3 +72,6 @@ local_settings.py
 # Pipenv
 Pipfile
 Pipfile.lock
+
+#Geolite2 DB
+tests/geolite2
